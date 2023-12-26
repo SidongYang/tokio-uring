@@ -1,10 +1,12 @@
+use io_uring::squeue::Flags;
+
 use crate::buf::fixed::FixedBuf;
 use crate::buf::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut, Slice};
 use crate::fs::OpenOptions;
 use crate::io::SharedFd;
 
 use crate::runtime::driver::op::Op;
-use crate::{UnsubmittedOneshot, UnsubmittedWrite};
+use crate::{UnsubmittedOneshot, UnsubmittedWrite, UnsubmittedRead};
 use std::fmt;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -181,6 +183,27 @@ impl File {
         let op = Op::read_at(&self.fd, buf, pos).unwrap();
         op.await
     }
+
+    pub async fn read_at_with_flags<T: BoundedBufMut>(
+        &self,
+        buf: T,
+        pos: u64,
+        flags: Flags,
+    ) -> crate::BufResult<usize, T> {
+        // Submit the read operation
+        let op = Op::read_at_with_flags(&self.fd, buf, pos, flags).unwrap();
+        op.await
+    }
+
+    pub fn unsubmitted_read_at_with_flags<T: BoundedBufMut>(
+        &self,
+        buf: T,
+        pos: u64,
+        flags: Flags,
+    ) -> UnsubmittedRead<T> {
+		UnsubmittedOneshot::read_at_with_flags(&self.fd, buf, pos, flags)
+    }
+	
 
     /// Read some bytes at the specified offset from the file into the specified
     /// array of buffers, returning how many bytes were read.
@@ -540,7 +563,16 @@ impl File {
     ///
     /// [`Ok(n)`]: Ok
     pub fn write_at<T: BoundedBuf>(&self, buf: T, pos: u64) -> UnsubmittedWrite<T> {
-        UnsubmittedOneshot::write_at(&self.fd, buf, pos)
+		self.write_at_with_flags(buf, pos, Flags::empty())
+    }
+
+    pub fn write_at_with_flags<T: BoundedBuf>(
+        &self,
+        buf: T,
+        pos: u64,
+        flags: Flags,
+    ) -> UnsubmittedWrite<T> {
+        UnsubmittedOneshot::write_at_with_flags(&self.fd, buf, pos, flags)
     }
 
     /// Attempts to write an entire buffer into this file at the specified offset.
